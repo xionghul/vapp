@@ -34,6 +34,8 @@
 
 #define DUMP_PACKETS
 
+#define VHOST_KERNEL
+
 struct ServerMsg;
 
 typedef int (*InMsgHandler)(void* context, struct ServerMsg* msg);

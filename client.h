@@ -37,5 +37,9 @@ int set_handler_client(Client* client, struct AppHandlers* handlers);
 int loop_client(Client* client);
 
 int vhost_ioctl(Client* client, enum VhostUserRequest request, ...);
+int vhost_kernel_ioctl(Client* client, unsigned long int request, ...);
+int init_kernel_client(Client* client);
+int init_tap();
+extern int tap_fd;
 
 #endif /* CLIENT_H_ */

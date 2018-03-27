@@ -15,10 +15,14 @@
 #include "stat.h"
 #include "vring.h"
 #include "vhost_user.h"
+#include "vhost_uapi.h"
 
 typedef struct VhostClient {
     Client* client;
+	union {
     VhostUserMemory memory;
+    struct vhost_memory vhost_memory;
+	};
     uint64_t features;           // features negotiated with the server
 
     struct vhost_vring* vring_table_shm[VHOST_CLIENT_VRING_NUM];

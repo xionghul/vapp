@@ -9,8 +9,10 @@ HEADERS+=server.h vhost_server.h
 HEADERS+=client.h vhost_client.h
 HEADERS+=packet.h
 
+
+
 BIN=vhost
-CFLAGS += -Wall -Werror
+CFLAGS += -Wall
 CFLAGS += -ggdb3 -O0
 LFLAGS = -lrt
 

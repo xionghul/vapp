@@ -20,6 +20,7 @@
 #include "vring.h"
 #include "shm.h"
 #include "vhost_user.h"
+#include "vhost_uapi.h"
 
 #define VRING_IDX_NONE          ((uint16_t)-1)
 
@@ -29,6 +30,7 @@ static struct vhost_vring* new_vring(void* vring_base)
     int i = 0;
     uintptr_t ptr = (uintptr_t) ((char*)vring + sizeof(struct vhost_vring));
     size_t initialized_size = 0;
+	printf("ptr:%p\n", ptr);
 
     // Layout the descriptor table
     for (i = 0; i < VHOST_VRING_SIZE; i++) {
@@ -98,6 +100,7 @@ int set_host_vring(Client* client, struct vhost_vring *vring, int index)
             .log_guest_addr = (uintptr_t) NULL,
             .flags = 0 };
 
+#ifndef VHOST_KERNEL
     if (vhost_ioctl(client, VHOST_USER_SET_VRING_NUM, &num) != 0)
         return -1;
     if (vhost_ioctl(client, VHOST_USER_SET_VRING_BASE, &base) != 0)
@@ -108,6 +111,18 @@ int set_host_vring(Client* client, struct vhost_vring *vring, int index)
         return -1;
     if (vhost_ioctl(client, VHOST_USER_SET_VRING_ADDR, &addr) != 0)
         return -1;
+#else
+    if (vhost_kernel_ioctl(client, VHOST_SET_VRING_NUM, &num) != 0)
+        return -1;
+    if (vhost_kernel_ioctl(client, VHOST_SET_VRING_BASE, &base) != 0)
+        return -1;
+    if (vhost_kernel_ioctl(client, VHOST_SET_VRING_KICK, &kick) != 0)
+        return -1;
+    if (vhost_kernel_ioctl(client, VHOST_SET_VRING_CALL, &call) != 0)
+        return -1;
+    if (vhost_kernel_ioctl(client, VHOST_SET_VRING_ADDR, &addr) != 0)
+        return -1;
+#endif
 
     return 0;
 }
@@ -152,6 +167,11 @@ int put_vring(VringTable* vring_table, uint32_t v_idx, void* buf, size_t size)
         dest_buf = (void*) (uintptr_t) desc[a_idx].addr;
     }
 
+	if(v_idx == VHOST_CLIENT_VRING_IDX_RX) {
+		sync_shm(dest_buf, size);
+		sync_shm((void*)&(avail), sizeof(struct vring_avail));
+	}
+
     // set the header to all 0
     hdr = dest_buf;
     hdr->flags = 0;
@@ -162,10 +182,17 @@ int put_vring(VringTable* vring_table, uint32_t v_idx, void* buf, size_t size)
     hdr->csum_offset = 0;
 
     // We support only single buffer per packet
-    memcpy(dest_buf + hdr_len, buf, size);
+
     desc[a_idx].len = hdr_len + size;
     desc[a_idx].flags = 0;
     desc[a_idx].next = VRING_IDX_NONE;
+
+	if(v_idx == VHOST_CLIENT_VRING_IDX_TX)
+		memcpy(dest_buf + hdr_len, buf, size);
+	else if(v_idx == VHOST_CLIENT_VRING_IDX_RX) {
+		memcpy(buf, dest_buf + hdr_len, size);
+		desc[a_idx].flags = VIRTIO_DESC_F_WRITE;
+	}
 
     // add to avail
     avail->ring[avail->idx % num] = a_idx;
@@ -192,6 +219,8 @@ static int free_vring(VringTable* vring_table, uint32_t v_idx, uint32_t d_idx)
 
     return 0;
 }
+
+
 
 int process_used_vring(VringTable* vring_table, uint32_t v_idx)
 {
@@ -321,6 +350,7 @@ int kick(VringTable* vring_table, uint32_t v_idx)
 {
     uint64_t kick_it = 1;
     int kickfd = vring_table->vring[v_idx].kickfd;
+	printf("TX kick:idx:%d, kickfd:%d\n", v_idx, kickfd);
 
     write(kickfd, &kick_it, sizeof(kick_it));
     fsync(kickfd);
